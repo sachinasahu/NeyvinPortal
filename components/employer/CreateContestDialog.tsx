@@ -7,11 +7,16 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
-import { Card } from '../ui/card';
+import { Card, CardContent } from '../ui/card';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { ContestsAPI } from '@/lib/supabase/contests';
+import { ContestStatus, EmploymentType, LocationType } from '@/types/database.types';
 import { Badge } from '../ui/badge';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { useAuth } from '@/contexts/auth-context';
 import { Upload } from 'lucide-react';
+import { indianStates, getDistrictsByState } from '@/indian-location';
 
 interface Step {
   title: string;
@@ -24,18 +29,20 @@ interface ContestFormData {
   job_description: string;
   job_description_file: string;
   job_description_type: 'file' | 'text';
-  employment_type: string;
+  employment_type: EmploymentType;
   no_of_positions: number;
-  location: string;
-  budget_min: number;
-  budget_max: number;
-  experience_min: number;
-  experience_max: number;
+  state: string;
+  district: string;
+  budget_min: string;
+  budget_max: string;
+  experience_min: string;
+  experience_max: string;
   qualification: string;
+  other_qualification: string;
   hiring_for: 'Self' | 'Other';
   office_timings_start: string;
   office_timings_end: string;
-  onsite_feasibility: 'Remote' | 'Hybrid' | 'Onsite';
+  onsite_feasibility: LocationType;
   notice_period: string;
   must_have_skills: string[];
   good_to_have_skills: string[];
@@ -43,7 +50,9 @@ interface ContestFormData {
 
   // Drive Details
   drive_availability: 'Yes' | 'No';
-  drive_location?: 'Remote' | 'Office';
+  drive_mode?: 'Remote' | 'Office';
+  drive_state?: string;
+  drive_district?: string;
   interview_rounds: Array<{
     round_name: string;
     date: string;
@@ -53,37 +62,83 @@ interface ContestFormData {
 
   // Payment Details
   selected_plan: string;
+  vendor_price: string;
+  freelancer_price: string;
 }
 
 export default function CreateContestForm() {
+  const { user, profile, session, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = React.useState(1);
+
+  useEffect(() => {
+    async function checkConnection() {
+      try {
+        // Test Supabase connection
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('count')
+          .single();
+
+        if (error) {
+          console.error('Supabase connection error:', error);
+        } else {
+          console.log('Supabase connection successful:', data);
+        }
+      } catch (error) {
+        console.error('Connection test error:', error);
+      }
+    }
+
+    if (!authLoading) {
+      checkConnection();
+      
+      if (!session || !user) {
+        console.log('No active session, redirecting to login');
+        router.push('/login');
+        return;
+      }
+      
+      if (profile?.role !== 'employer') {
+        console.log('User is not an employer, redirecting to dashboard');
+        router.push('/dashboard');
+        alert('Only employers can create contests');
+        return;
+      }
+
+      console.log('Auth check passed:', { user, profile, session });
+    }
+  }, [user, profile, session, authLoading, router]);
   const [formData, setFormData] = React.useState<ContestFormData>({
     job_title: '',
     job_description: '',
     job_description_file: '',
     job_description_type: 'text',
-    employment_type: '',
+    employment_type: 'Full-time',
     no_of_positions: 1,
-    location: '',
-    budget_min: 0,
-    budget_max: 0,
-    experience_min: 0,
-    experience_max: 0,
+    state: '',
+    district: '',
+    budget_min: '',
+    budget_max: '',
+    experience_min: '',
+    experience_max: '',
     qualification: '',
+    other_qualification: '',
     hiring_for: 'Self',
     office_timings_start: '',
     office_timings_end: '',
-    onsite_feasibility: 'Remote',
+    onsite_feasibility: 'REMOTE',
     notice_period: '',
     must_have_skills: [],
     good_to_have_skills: [],
     short_description: '',
     drive_availability: 'No',
     interview_rounds: [],
-    selected_plan: 'Hiringhood Plus'
+    selected_plan: '',
+    vendor_price: '',
+    freelancer_price: ''
   });
 
-  const router = useRouter();
   const [steps] = React.useState<Step[]>([
     { title: 'Details', isCompleted: false },
     { title: 'Drive availability', isCompleted: false },
@@ -91,47 +146,241 @@ export default function CreateContestForm() {
     { title: 'Publish', isCompleted: false },
   ]);
 
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient({
+    options: {
+      persistSession: true,
+      autoRefreshToken: true
+    }
+  });
 
   const handleCreateContest = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw userError || new Error('User not found');
+      if (!session || !user) {
+        console.error('No active session');
+        alert('Please login to continue');
+        router.push('/login');
+        return;
+      }
 
-      const { error: insertError } = await supabase.from('contests').insert({
+      // Check if user has employer role
+      const { data: userProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !userProfile) {
+        console.error('Profile error:', profileError);
+        alert('User profile not found. Please login again.');
+        router.push('/login');
+        return;
+      }
+
+      if (userProfile.role !== 'employer') {
+        console.error('User is not an employer:', userProfile);
+        alert('You must be registered as an employer to create contests.');
+        router.push('/dashboard');
+        return;
+      }
+
+      // Check if employer profile exists
+      const { data: employerProfile, error: employerProfileError } = await supabase
+        .from('employer_profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (employerProfileError || !employerProfile) {
+        console.error('Employer profile error:', employerProfileError);
+        alert('Employer profile not found. Please complete your employer registration.');
+        router.push('/login');
+        return;
+      }
+
+      console.log('User profile:', userProfile);
+      console.log('Employer profile:', employerProfile);
+
+      console.log('Current session:', session);
+      console.log('Current user:', user);
+      console.log('Employer profile:', employerProfile);
+
+      if (!user || !profile) {
+        console.error('No user or profile found');
+        router.push('/login');
+        return;
+      }
+
+      if (profile.role !== 'employer') {
+        console.error('User is not an employer');
+        alert('Only employers can create contests');
+        router.push('/dashboard');
+        return;
+      }
+
+      // Validate required fields
+      if (!formData.job_title) throw new Error('Job title is required');
+      if (!formData.employment_type) throw new Error('Employment type is required');
+      if (!formData.state) throw new Error('State is required');
+      if (!formData.district) throw new Error('District is required');
+      if (!formData.short_description) throw new Error('Short description is required');
+      if (formData.job_description_type === 'text' && !formData.job_description) throw new Error('Job description is required');
+      if (formData.job_description_type === 'file' && !formData.job_description_file) throw new Error('Job description file is required');
+      if (!formData.vendor_price) throw new Error('Vendor price is required');
+      if (!formData.freelancer_price) throw new Error('Freelancer price is required');
+      if (!formData.qualification) throw new Error('Qualification is required');
+      if (formData.qualification === 'other' && !formData.other_qualification) throw new Error('Please specify the qualification');
+
+      // Prepare contest data
+      const contestData = {
         employer_id: user.id,
-        name: formData.job_title,
-        job_description: formData.job_description,
-        job_description_file: formData.job_description_file,
+        job_title: formData.job_title.trim(),
+        short_description: formData.short_description.trim(),
+        detailed_description: formData.job_description_type === 'file' 
+          ? formData.job_description_file 
+          : formData.job_description?.trim(),
+        location_type: formData.onsite_feasibility.toUpperCase(),
+        location_state: formData.state.trim(),
+        location_city: formData.district.trim(),
+        location_country: 'India',
         employment_type: formData.employment_type,
-        no_of_positions: formData.no_of_positions,
-        location: formData.location,
-        budget_min: formData.budget_min,
-        budget_max: formData.budget_max,
-        experience_min: formData.experience_min,
-        experience_max: formData.experience_max,
-        qualification: formData.qualification,
-        hiring_for: formData.hiring_for,
-        office_timings_start: formData.office_timings_start,
-        office_timings_end: formData.office_timings_end,
-        onsite_feasibility: formData.onsite_feasibility,
-        notice_period: formData.notice_period,
-        must_have_skills: formData.must_have_skills,
-        good_to_have_skills: formData.good_to_have_skills,
-        short_description: formData.short_description,
-        drive_availability: formData.drive_availability,
-        drive_location: formData.drive_location,
-        interview_rounds: formData.interview_rounds,
-        selected_plan: formData.selected_plan,
-        status: 'DRAFT'
-      });
+        experience_min: parseFloat(formData.experience_min) || 0,
+        experience_max: parseFloat(formData.experience_max) || 0,
+        budget_min: parseFloat(formData.budget_min) || 0,
+        budget_max: parseFloat(formData.budget_max) || 0,
+        freelancer_fee: parseFloat(formData.freelancer_price),
+        vendor_fee: parseFloat(formData.vendor_price),
+        status: 'DRAFT',
+        shortlisting_count: 0,
+        l1_count: 0,
+        l2_count: 0,
+        l3_count: 0,
+        offered_count: 0,
+        submitted_count: 0,
+        drive_date: formData.drive_availability === 'Yes' && formData.interview_rounds[0]?.date 
+          ? formData.interview_rounds[0].date 
+          : null,
+        drive_start_time: formData.drive_availability === 'Yes' && formData.interview_rounds[0]?.start_time 
+          ? formData.interview_rounds[0].start_time 
+          : null,
+        drive_end_time: formData.drive_availability === 'Yes' && formData.interview_rounds[0]?.end_time 
+          ? formData.interview_rounds[0].end_time 
+          : null,
+        drive_timezone: formData.drive_availability === 'Yes' ? 'Asia/Kolkata' : null,
+        is_featured: false,
+        is_urgent: false,
+        application_deadline: null
+      };
 
-      if (insertError) throw insertError;
+      console.log('Sending contest data:', contestData);
 
-      router.push('/employer/dashboard');
+      // Create the contest using direct Supabase client
+      console.log('Making Supabase request...');
+      
+      try {
+        // First verify the session token is valid
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !currentSession) {
+          console.error('Session verification failed:', sessionError);
+          throw new Error('Your session has expired. Please login again.');
+        }
+
+        // Set the auth header explicitly
+        const { data: contest, error: insertError } = await supabase
+          .from('contests')
+          .insert([contestData])
+          .select('*')
+          .single();
+
+        if (insertError) {
+          console.error('Supabase insert error:', insertError);
+          throw insertError;
+        }
+
+        if (!contest) {
+          console.error('No contest data returned');
+          throw new Error('Failed to create contest - no data returned');
+        }
+
+        console.log('Contest created successfully:', contest);
+        
+        // Add skills only after successful contest creation
+        if (formData.must_have_skills.length > 0) {
+          console.log('Adding must have skills...');
+          const { error: skillsError } = await supabase
+            .from('contest_skills')
+            .insert(
+              formData.must_have_skills.map(skill => ({
+                contest_id: contest.id,
+                skill_name: skill,
+                is_mandatory: true
+              }))
+            );
+          
+          if (skillsError) {
+            console.error('Error adding must have skills:', skillsError);
+          }
+        }
+
+        if (formData.good_to_have_skills.length > 0) {
+          console.log('Adding good to have skills...');
+          const { error: skillsError } = await supabase
+            .from('contest_skills')
+            .insert(
+              formData.good_to_have_skills.map(skill => ({
+                contest_id: contest.id,
+                skill_name: skill,
+                is_mandatory: false
+              }))
+            );
+          
+          if (skillsError) {
+            console.error('Error adding good to have skills:', skillsError);
+          }
+        }
+
+        // Show success message and redirect
+        alert('Contest created successfully!');
+        router.push('/employer/dashboard');
+        return;
+      } catch (error: any) {
+        console.error('Error in contest creation:', error);
+        if (error.code === '42501') {
+          alert('Permission denied. Please make sure you are logged in as an employer.');
+        } else if (error.code === '23505') {
+          alert('A contest with these details already exists.');
+        } else {
+          alert('Error creating contest: ' + (error.message || 'Unknown error'));
+        }
+        throw error;
+      }
+
+      // Then add the skills
+      if (contest) {
+        if (formData.must_have_skills.length > 0) {
+          // Add must have skills
+          await ContestsAPI.addSkills(formData.must_have_skills.map(skill => ({
+            contest_id: contest.id,
+            skill_name: skill,
+            is_mandatory: true
+          })));
+        }
+
+        if (formData.good_to_have_skills.length > 0) {
+          // Add good to have skills
+          await ContestsAPI.addSkills(formData.good_to_have_skills.map(skill => ({
+            contest_id: contest.id,
+            skill_name: skill,
+            is_mandatory: false
+          })));
+        }
+
+        // Show success message
+        console.log('Contest created successfully:', contest);
+        router.push('/employer/dashboard');
+      }
     } catch (error) {
       console.error('Error creating contest:', error);
-      // You might want to show an error toast here
+      alert('Error creating contest: ' + (error as Error).message);
     }
   };
 
@@ -249,9 +498,10 @@ export default function CreateContestForm() {
                 <SelectValue placeholder="Employment Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="full-time">Full Time</SelectItem>
-                <SelectItem value="part-time">Part Time</SelectItem>
-                <SelectItem value="contract">Contract</SelectItem>
+                <SelectItem value="Full-time">Full-time</SelectItem>
+                <SelectItem value="Part-time">Part-time</SelectItem>
+                <SelectItem value="Contract">Contract</SelectItem>
+                <SelectItem value="Freelance">Freelance</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -267,39 +517,66 @@ export default function CreateContestForm() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div>
-            <Label className="mb-2 block">Location*</Label>
-            <Select
-              value={formData.location}
-              onValueChange={(value) => handleInputChange('location', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Location" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="remote">Remote</SelectItem>
-                <SelectItem value="onsite">Onsite</SelectItem>
-                <SelectItem value="hybrid">Hybrid</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-2 block">State*</Label>
+              <Select
+                value={formData.state}
+                onValueChange={(value) => {
+                  handleInputChange('state', value);
+                  handleInputChange('district', ''); // Reset district when state changes
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select State" />
+                </SelectTrigger>
+                <SelectContent>
+                  {indianStates.map((state) => (
+                    <SelectItem key={state} value={state}>
+                      {state}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">District*</Label>
+              <Select
+                value={formData.district}
+                onValueChange={(value) => handleInputChange('district', value)}
+                disabled={!formData.state}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.state ? "Select District" : "Select State first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {formData.state && getDistrictsByState(formData.state).map((district) => (
+                    <SelectItem key={district} value={district}>
+                      {district}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div>
             <Label className="mb-2 block">Budget/CTC*</Label>
             <div className="flex gap-2 items-center">
               <Input 
-                placeholder="ex:2"
+                placeholder="Enter minimum budget"
                 type="number"
                 className="flex-1"
                 value={formData.budget_min}
-                onChange={(e) => handleInputChange('budget_min', parseFloat(e.target.value))}
+                onChange={(e) => handleInputChange('budget_min', e.target.value)}
               />
               <span>to</span>
               <Input 
-                placeholder="ex:4"
+                placeholder="Enter maximum budget"
                 type="number"
                 className="flex-1"
                 value={formData.budget_max}
-                onChange={(e) => handleInputChange('budget_max', parseFloat(e.target.value))}
+                onChange={(e) => handleInputChange('budget_max', e.target.value)}
               />
               <div className="w-24">
                 <Select defaultValue="lpa">
@@ -317,19 +594,19 @@ export default function CreateContestForm() {
             <Label className="mb-2 block">Experience*</Label>
             <div className="flex gap-2 items-center">
               <Input 
-                placeholder="ex:2"
+                placeholder="Enter minimum experience"
                 type="number"
                 className="flex-1"
                 value={formData.experience_min}
-                onChange={(e) => handleInputChange('experience_min', parseInt(e.target.value))}
+                onChange={(e) => handleInputChange('experience_min', e.target.value)}
               />
               <span>to</span>
               <Input 
-                placeholder="ex:4"
+                placeholder="Enter maximum experience"
                 type="number"
                 className="flex-1"
                 value={formData.experience_max}
-                onChange={(e) => handleInputChange('experience_max', parseInt(e.target.value))}
+                onChange={(e) => handleInputChange('experience_max', e.target.value)}
               />
               <span className="w-12 text-center">Yrs</span>
             </div>
@@ -339,19 +616,42 @@ export default function CreateContestForm() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div>
             <Label className="mb-2 block">Qualification*</Label>
-            <Select
-              value={formData.qualification}
-              onValueChange={(value) => handleInputChange('qualification', value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select Qualification" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="be">B.E.</SelectItem>
-                <SelectItem value="btech">B.Tech</SelectItem>
-                <SelectItem value="mca">MCA</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-4">
+              <Select
+                value={formData.qualification}
+                onValueChange={(value) => {
+                  handleInputChange('qualification', value);
+                  if (value !== 'other') {
+                    handleInputChange('other_qualification', '');
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Qualification" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="be">B.E.</SelectItem>
+                  <SelectItem value="btech">B.Tech</SelectItem>
+                  <SelectItem value="mca">MCA</SelectItem>
+                  <SelectItem value="mba">MBA</SelectItem>
+                  <SelectItem value="bca">BCA</SelectItem>
+                  <SelectItem value="bsc">B.Sc</SelectItem>
+                  <SelectItem value="msc">M.Sc</SelectItem>
+                  <SelectItem value="bcom">B.Com</SelectItem>
+                  <SelectItem value="mcom">M.Com</SelectItem>
+                  <SelectItem value="phd">Ph.D</SelectItem>
+                  <SelectItem value="diploma">Diploma</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              {formData.qualification === 'other' && (
+                <Input 
+                  placeholder="Enter your qualification"
+                  value={formData.other_qualification}
+                  onChange={(e) => handleInputChange('other_qualification', e.target.value)}
+                />
+              )}
+            </div>
           </div>
           <div>
             <Label className="mb-2 block">Hiring For*</Label>
@@ -399,9 +699,9 @@ export default function CreateContestForm() {
                 <SelectValue placeholder="Select Mode" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Remote">Remote</SelectItem>
-                <SelectItem value="Onsite">Onsite</SelectItem>
-                <SelectItem value="Hybrid">Hybrid</SelectItem>
+                <SelectItem value="REMOTE">Remote</SelectItem>
+                <SelectItem value="ON-SITE">On-site</SelectItem>
+                <SelectItem value="HYBRID">Hybrid</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -415,63 +715,100 @@ export default function CreateContestForm() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
             <Label className="mb-2 block">Must have skills*</Label>
-            <Button 
-              variant="outline" 
-              className="ml-2"
-              onClick={() => {
-                const skill = prompt('Enter skill:');
-                if (skill) {
-                  handleInputChange('must_have_skills', [...formData.must_have_skills, skill]);
-                }
-              }}
-            >
-              + Add new skill
-            </Button>
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Enter skill"
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                    e.preventDefault();
+                    handleInputChange('must_have_skills', [...formData.must_have_skills, e.currentTarget.value.trim()]);
+                    e.currentTarget.value = '';
+                  }
+                }}
+              />
+              <Button 
+                variant="outline"
+                onClick={(e) => {
+                  const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                  if (input && input.value.trim()) {
+                    handleInputChange('must_have_skills', [...formData.must_have_skills, input.value.trim()]);
+                    input.value = '';
+                  }
+                }}
+              >
+                Add
+              </Button>
+            </div>
             <div className="mt-2 flex gap-2 flex-wrap">
               {formData.must_have_skills.map((skill, index) => (
                 <Badge 
                   key={index}
                   variant="secondary"
-                  className="cursor-pointer"
-                  onClick={() => {
-                    const newSkills = formData.must_have_skills.filter((_, i) => i !== index);
-                    handleInputChange('must_have_skills', newSkills);
-                  }}
+                  className="cursor-pointer flex items-center gap-1"
                 >
-                  {skill} ×
+                  {skill}
+                  <span 
+                    className="ml-1 hover:text-red-500"
+                    onClick={() => {
+                      const newSkills = formData.must_have_skills.filter((_, i) => i !== index);
+                      handleInputChange('must_have_skills', newSkills);
+                    }}
+                  >
+                    ×
+                  </span>
                 </Badge>
               ))}
             </div>
           </div>
+
           <div>
             <Label className="mb-2 block">Good to have skills*</Label>
-            <Button 
-              variant="outline" 
-              className="ml-2"
-              onClick={() => {
-                const skill = prompt('Enter skill:');
-                if (skill) {
-                  handleInputChange('good_to_have_skills', [...formData.good_to_have_skills, skill]);
-                }
-              }}
-            >
-              + Add new skill
-            </Button>
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Enter skill"
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                    e.preventDefault();
+                    handleInputChange('good_to_have_skills', [...formData.good_to_have_skills, e.currentTarget.value.trim()]);
+                    e.currentTarget.value = '';
+                  }
+                }}
+              />
+              <Button 
+                variant="outline"
+                onClick={(e) => {
+                  const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                  if (input && input.value.trim()) {
+                    handleInputChange('good_to_have_skills', [...formData.good_to_have_skills, input.value.trim()]);
+                    input.value = '';
+                  }
+                }}
+              >
+                Add
+              </Button>
+            </div>
             <div className="mt-2 flex gap-2 flex-wrap">
               {formData.good_to_have_skills.map((skill, index) => (
                 <Badge 
                   key={index}
                   variant="secondary"
-                  className="cursor-pointer"
-                  onClick={() => {
-                    const newSkills = formData.good_to_have_skills.filter((_, i) => i !== index);
-                    handleInputChange('good_to_have_skills', newSkills);
-                  }}
+                  className="cursor-pointer flex items-center gap-1"
                 >
-                  {skill} ×
+                  {skill}
+                  <span 
+                    className="ml-1 hover:text-red-500"
+                    onClick={() => {
+                      const newSkills = formData.good_to_have_skills.filter((_, i) => i !== index);
+                      handleInputChange('good_to_have_skills', newSkills);
+                    }}
+                  >
+                    ×
+                  </span>
                 </Badge>
               ))}
             </div>
@@ -514,13 +851,13 @@ export default function CreateContestForm() {
           <h3 className="text-lg font-medium mb-4">Drive details</h3>
           <div className="space-y-4">
             <div>
-              <Label className="mb-2 block">Location*</Label>
+              <Label className="mb-2 block">Mode*</Label>
               <Select
-                value={formData.drive_location}
-                onValueChange={(value) => handleInputChange('drive_location', value)}
+                value={formData.drive_mode}
+                onValueChange={(value) => handleInputChange('drive_mode', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Location" />
+                  <SelectValue placeholder="Select Mode" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Remote">Remote</SelectItem>
@@ -529,11 +866,57 @@ export default function CreateContestForm() {
               </Select>
             </div>
 
+            {formData.drive_mode === 'Office' && (
+              <div className="space-y-4 mt-4">
+                <div>
+                  <Label className="mb-2 block">State*</Label>
+                  <Select
+                    value={formData.drive_state}
+                    onValueChange={(value) => {
+                      handleInputChange('drive_state', value);
+                      handleInputChange('drive_district', ''); // Reset district when state changes
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {indianStates.map((state) => (
+                        <SelectItem key={state} value={state}>
+                          {state}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="mb-2 block">District*</Label>
+                  <Select
+                    value={formData.drive_district}
+                    onValueChange={(value) => handleInputChange('drive_district', value)}
+                    disabled={!formData.drive_state}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={formData.drive_state ? "Select District" : "Select State first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formData.drive_state && getDistrictsByState(formData.drive_state).map((district) => (
+                        <SelectItem key={district} value={district}>
+                          {district}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
             <div>
               <h4 className="text-md font-medium mb-2">Interview</h4>
               <Label className="mb-2 block">Select interview date & time*</Label>
               {formData.interview_rounds.map((round, index) => (
-                <div key={index} className="grid grid-cols-3 gap-4 mb-4">
+                <div key={index} className="grid grid-cols-4 gap-4 mb-4 items-start">
                   <Input 
                     placeholder="Type Interview Rounds"
                     value={round.round_name}
@@ -573,6 +956,16 @@ export default function CreateContestForm() {
                       }}
                     />
                   </div>
+                  <Button
+                    variant="ghost"
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50 px-3"
+                    onClick={() => {
+                      const newRounds = formData.interview_rounds.filter((_, i) => i !== index);
+                      handleInputChange('interview_rounds', newRounds);
+                    }}
+                  >
+                    ×
+                  </Button>
                 </div>
               ))}
               <Button 
@@ -599,51 +992,149 @@ export default function CreateContestForm() {
 
   const renderPaymentStep = () => (
     <div className="space-y-6">
-      <h3 className="text-lg font-medium mb-4">Payment</h3>
+      <h3 className="text-lg font-medium mb-4">Set Contest Prices</h3>
       <div className="border rounded-lg p-6">
-        <RadioGroup defaultValue="hiringhood-plus">
-          <div className="flex items-start gap-4 p-4 border rounded-lg">
-            <RadioGroupItem value="hiringhood-plus" id="hiringhood-plus" />
-            <div className="flex-1">
-              <div className="flex justify-between">
-                <Label htmlFor="hiringhood-plus" className="text-lg">Hiringhood Plus</Label>
-                <div>
-                  <span className="text-lg">₹999</span>
-                  <span className="ml-2 bg-green-400 text-white px-2 py-1 rounded">Free</span>
-                </div>
-              </div>
-              <div className="text-blue-600 mt-2">Get candidates hired for just ₹999!</div>
-              <div className="text-sm text-gray-600">Post your job on our portal and connect with immediate joiners.</div>
-              <div className="mt-4">
-                <h4 className="font-medium mb-2">Benefits</h4>
-                <ul className="space-y-2">
-                  <li>✨ Access a pool of immediate joiners actively available in the market.</li>
-                  <li>✨ Entry Your job will be posted on 30+ portals (track the source of each candidate).</li>
-                  <li>✨ Save both time and money.</li>
-                  <li>✨ Collaborate with 300+ recruiters across pan-India.</li>
-                  <li>✨ Organize hiring drives to shortlist candidates efficiently.</li>
-                  <li>✨ Conduct hiring drives directly from our platform.</li>
-                </ul>
-              </div>
-            </div>
+        <div className="space-y-4">
+          <div>
+            <Label className="mb-2 block">Vendor Price (₹)*</Label>
+            <Input 
+              type="number"
+              min="0"
+              placeholder="Enter price for vendors"
+              value={formData.vendor_price}
+              onChange={(e) => handleInputChange('vendor_price', e.target.value)}
+            />
           </div>
-        </RadioGroup>
+          <div>
+            <Label className="mb-2 block">Freelancer Price (₹)*</Label>
+            <Input 
+              type="number"
+              min="0"
+              placeholder="Enter price for freelancers"
+              value={formData.freelancer_price}
+              onChange={(e) => handleInputChange('freelancer_price', e.target.value)}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
 
   const renderPublishStep = () => (
-    <div className="text-center py-12">
-      <img src="/images/success.png" alt="Success" className="mx-auto mb-6" />
-      <h2 className="text-2xl font-semibold mb-4">The contest has been created successfully.</h2>
-      <p className="text-gray-600 mb-8">
-        Once the admin approves it, the contest will be published. Until then, it will remain
-        in preview mode. In the meantime, please fill in the employer preferences to help
-        determine the candidate's probability of joining.
-      </p>
+    <div className="space-y-6">
+      <h3 className="text-lg font-medium mb-4">Review Contest Details</h3>
+      <Card>
+        <CardContent className="space-y-4 mt-4">
+          <div>
+            <h4 className="font-medium">Job Details</h4>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div>
+                <Label>Job Title</Label>
+                <p className="text-gray-600">{formData.job_title}</p>
+              </div>
+              <div>
+                <Label>Employment Type</Label>
+                <p className="text-gray-600">{formData.employment_type}</p>
+              </div>
+              <div>
+                <Label>Experience Required</Label>
+                <p className="text-gray-600">{formData.experience_min} - {formData.experience_max} years</p>
+              </div>
+              <div>
+                <Label>Qualification</Label>
+                <p className="text-gray-600">
+                  {formData.qualification === 'other' 
+                    ? formData.other_qualification 
+                    : formData.qualification.toUpperCase()}
+                </p>
+              </div>
+              <div>
+                <Label>Budget/CTC</Label>
+                <p className="text-gray-600">₹{formData.budget_min} - ₹{formData.budget_max} LPA</p>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="font-medium">Location</h4>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div>
+                <Label>State</Label>
+                <p className="text-gray-600">{formData.state}</p>
+              </div>
+              <div>
+                <Label>District</Label>
+                <p className="text-gray-600">{formData.district}</p>
+              </div>
+              <div>
+                <Label>Work Mode</Label>
+                <p className="text-gray-600">{formData.onsite_feasibility}</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-medium">Skills Required</h4>
+            <div className="space-y-2 mt-2">
+              <div>
+                <Label>Must Have Skills</Label>
+                <div className="flex gap-2 flex-wrap mt-1">
+                  {formData.must_have_skills.map((skill, index) => (
+                    <Badge key={index} variant="secondary">{skill}</Badge>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Good to Have Skills</Label>
+                <div className="flex gap-2 flex-wrap mt-1">
+                  {formData.good_to_have_skills.map((skill, index) => (
+                    <Badge key={index} variant="secondary">{skill}</Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {formData.drive_availability === 'Yes' && (
+            <div>
+              <h4 className="font-medium">Drive Details</h4>
+              <div className="space-y-2 mt-2">
+                <div>
+                  <Label>Drive Mode</Label>
+                  <p className="text-gray-600">{formData.drive_mode}</p>
+                </div>
+                {formData.interview_rounds.map((round, index) => (
+                  <div key={index}>
+                    <Label>{round.round_name}</Label>
+                    <p className="text-gray-600">
+                      {round.date} ({round.start_time} - {round.end_time})
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <h4 className="font-medium">Pricing</h4>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div>
+                <Label>Vendor Price</Label>
+                <p className="text-gray-600">₹{formData.vendor_price}</p>
+              </div>
+              <div>
+                <Label>Freelancer Price</Label>
+                <p className="text-gray-600">₹{formData.freelancer_price}</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
       <div className="flex justify-center gap-4">
-        <Button variant="outline">FILL OUT PREFERENCES</Button>
-        <Button onClick={handleCreateContest}>CONFIRM</Button>
+        <Button variant="outline" onClick={() => setCurrentStep(currentStep - 1)}>
+          Edit Details
+        </Button>
       </div>
     </div>
   );
