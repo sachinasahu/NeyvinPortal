@@ -8,6 +8,7 @@ import { ContestsAPI } from "@/lib/supabase/contests";
 import { Contest } from "@/types/database.types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import PaymentButton from "@/components/PaymentButton";
 
 export default function VendorDashboard() {
   const [contests, setContests] = useState<Contest[]>([]);
@@ -79,6 +80,7 @@ export default function VendorDashboard() {
             </CardContent>
           </Card>
         </div>
+        <PaymentButton />
 
         {/* Active Contests */}
         <Card>

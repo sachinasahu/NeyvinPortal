@@ -51,7 +51,7 @@ const OverviewSection = () => (
       <div className="absolute top-20 right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-pulse opacity-60"></div>
       <div className="absolute bottom-20 left-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-pulse delay-1000 opacity-60"></div>
     </div>
-    
+
     <div className="max-w-6xl mx-auto px-6 text-center relative z-10">
       <div className="flex items-center justify-center space-x-4 mb-12">
         <div className="relative group">

@@ -86,7 +86,7 @@ export default function Header() {
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 bg-background border-b border-border">
-      <div className="mx-auto max-w-6xl">
+      <div>
         <nav
           className="px-4 sm:px-6 lg:px-8"
           aria-label="Main navigation"
@@ -104,7 +104,6 @@ export default function Header() {
             </div>
 
             <div className="hidden items-center space-x-4 md:flex">
-              {!loading && (
                 <>
                   {user ? (
                     <UserMenu />
@@ -125,8 +124,6 @@ export default function Header() {
                     </div>
                   )}
                 </>
-              )}
-              
               <DarkModeToggle />
             </div>
             

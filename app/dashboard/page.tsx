@@ -112,10 +112,10 @@ export default function DashboardPage() {
           <div className="bg-card border rounded-lg p-4 mb-6">
             <h2 className="text-lg font-semibold mb-2">Welcome, {profile.full_name}!</h2>
             <p className="text-muted-foreground">
-              {profile.company_name && `Company: ${profile.company_name}`}
+              Neyvin
             </p>
             <p className="text-muted-foreground">
-              Email: {profile.email}
+              Email: myEmail
             </p>
           </div>
         </div>
@@ -131,9 +131,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <Button asChild className="w-full">
-                  <Link href={action.href}>
-                    {action.title}
-                  </Link>
+                  
                 </Button>
               </CardContent>
             </Card>
