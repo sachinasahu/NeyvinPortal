@@ -146,12 +146,7 @@ export default function CreateContestForm() {
     { title: 'Publish', isCompleted: false },
   ]);
 
-  const supabase = createClientComponentClient({
-    options: {
-      persistSession: true,
-      autoRefreshToken: true
-    }
-  });
+  const supabase = createClientComponentClient();
 
   const handleCreateContest = async () => {
     try {
@@ -355,29 +350,7 @@ export default function CreateContestForm() {
       }
 
       // Then add the skills
-      if (contest) {
-        if (formData.must_have_skills.length > 0) {
-          // Add must have skills
-          await ContestsAPI.addSkills(formData.must_have_skills.map(skill => ({
-            contest_id: contest.id,
-            skill_name: skill,
-            is_mandatory: true
-          })));
-        }
-
-        if (formData.good_to_have_skills.length > 0) {
-          // Add good to have skills
-          await ContestsAPI.addSkills(formData.good_to_have_skills.map(skill => ({
-            contest_id: contest.id,
-            skill_name: skill,
-            is_mandatory: false
-          })));
-        }
-
-        // Show success message
-        console.log('Contest created successfully:', contest);
-        router.push('/employer/dashboard');
-      }
+      
     } catch (error) {
       console.error('Error creating contest:', error);
       alert('Error creating contest: ' + (error as Error).message);
