@@ -48,7 +48,7 @@ export default function TryNeyvin() {
               size="lg"
               className="relative group bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg px-8 py-6 text-lg transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
             >
-              <Link href="/contact" className="flex items-center gap-2">
+              <Link href={{pathname:"/contact"}} className="flex items-center gap-2">
                 Get in Touch
                 <svg
                   xmlns="http://www.w3.org/2000/svg"

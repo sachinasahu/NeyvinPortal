@@ -158,7 +158,7 @@ export default function Footer() {
             <ul className="space-y-3">
               <li>
                 <Link 
-                  href="/about" 
+                  href={{pathname:"/about" }}
                   className="text-muted-foreground hover:text-primary transition-colors text-sm block py-1"
                 >
                   About Us
@@ -166,7 +166,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link 
-                  href="/contact" 
+                  href={{pathname:"/contact"}}
                   className="text-muted-foreground hover:text-primary transition-colors text-sm block py-1"
                 >
                   Contact
@@ -174,7 +174,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link 
-                  href="/privacy" 
+                  href={{pathname:"/privacy"}} 
                   className="text-muted-foreground hover:text-primary transition-colors text-sm block py-1"
                 >
                   Privacy Policy
@@ -182,7 +182,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link 
-                  href="/terms" 
+                  href={{pathname:"/terms"}} 
                   className="text-muted-foreground hover:text-primary transition-colors text-sm block py-1"
                 >
                   Terms of Service
@@ -200,19 +200,19 @@ export default function Footer() {
             </p>
             <div className="flex space-x-6">
               <Link 
-                href="/privacy" 
+                href={{pathname:"/privacy"}} 
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Privacy
               </Link>
               <Link 
-                href="/terms" 
+                href={{pathname:"/terms"}} 
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Terms
               </Link>
               <Link 
-                href="/contact" 
+                href={{pathname:"/contact"}} 
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Contact
