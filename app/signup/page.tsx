@@ -16,7 +16,7 @@ import Link from "next/link";
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialRole = (searchParams.get("role") as UserRole) || "employer";
+  const initialRole = (searchParams?.get("role") as UserRole) || "employer";
   const { signUp } = useAuth();
   
   const [activeTab, setActiveTab] = useState<UserRole>(initialRole);
@@ -60,7 +60,7 @@ export default function SignupPage() {
         toast.error(error.message || "Failed to create account");
       } else {
         toast.success("Account created successfully! Please check your email to verify your account.");
-        router.push("/login?role=" + activeTab);
+        router.push(("/login?role=" + activeTab) as any);
       }
     } catch (error: any) {
       console.error('Signup error:', error);

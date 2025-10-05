@@ -29,7 +29,7 @@ import CompanyLogo from "@/public/images/neyvinLogo.jpg";
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialRole = (searchParams.get("role") as UserRole) || "employer";
+  const initialRole = (searchParams?.get("role") as UserRole) || "employer";
   const { signIn } = useAuth();
   
   const [activeTab, setActiveTab] = useState<UserRole>(initialRole);
@@ -58,7 +58,7 @@ export default function LoginPage() {
 
       // Redirect based on role
       const redirectPath = `/${activeTab}/dashboard`;
-      router.push(redirectPath);
+      router.push(redirectPath as any);
       toast.success("Welcome back!");
     } catch (err) {
       console.error('Login error:', err);
