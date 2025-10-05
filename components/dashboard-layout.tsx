@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  userRole:string;
 }
 
 const sidebarItems = [
@@ -42,7 +43,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={item.href as any}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg mb-1 ${
                     isActive 
                       ? 'bg-blue-600 text-white' 

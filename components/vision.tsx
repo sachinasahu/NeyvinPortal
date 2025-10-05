@@ -157,7 +157,7 @@ export default function Vision() {
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-12 leading-relaxed">
             Our commitment to technological advancement is unwavering. We continuously innovate and adapt to emerging technologies to provide cutting-edge solutions that shape the future of business and society.
           </p>
-          <Link href="/contact">
+          <Link href={{pathname:"/contact"}}>
             <Button size="lg" className="group">
               Partner with Us
               <ChevronRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
