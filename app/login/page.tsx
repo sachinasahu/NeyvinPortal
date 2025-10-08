@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,6 +118,7 @@ export default function LoginPage() {
   };
 
   return (
+    <Suspense fallback={<div>Loading...</div>}>
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-4xl">
         <CardHeader className="text-center space-y-1">
@@ -248,5 +250,6 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+    </Suspense>
   );
 } 

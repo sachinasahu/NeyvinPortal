@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,7 @@ export default function SignupPage() {
   };
 
   return (
+    <Suspense fallback={<div>Loading...</div>}>
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-1">
@@ -172,5 +174,6 @@ export default function SignupPage() {
         </CardContent>
       </Card>
     </div>
+    </Suspense>
   );
 } 
