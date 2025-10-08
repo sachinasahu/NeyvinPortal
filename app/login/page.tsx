@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +30,7 @@ import CompanyLogo from "@/public/images/neyvinLogo.jpg";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialRole = (searchParams?.get("role") as UserRole) || "employer";
+  const initialRole = "employer";
   const { signIn } = useAuth();
   
   const [activeTab, setActiveTab] = useState<UserRole>(initialRole);
